@@ -1,0 +1,11 @@
+mod outer {
+    pub mod inner {
+        //! inner use items are currently unsupported
+        use crate::Hello;
+        use crate::World;
+        use std::io::Write;
+    }
+}
+
+struct Hello;
+struct World;

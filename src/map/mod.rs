@@ -1,29 +1,11 @@
+mod key;
+
 use std::collections::HashMap;
 
 use proc_macro2::Span;
-use syn::{token::PathSep, Ident, ItemUse, Token, UseName, UsePath, Visibility};
+use syn::{Ident, ItemUse, Token, UseName, UsePath};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum LeadingColon {
-    Yes,
-    No,
-}
-
-impl From<Option<PathSep>> for LeadingColon {
-    fn from(value: Option<PathSep>) -> Self {
-        if value.is_some() {
-            Self::Yes
-        } else {
-            Self::No
-        }
-    }
-}
-
-impl From<LeadingColon> for Option<PathSep> {
-    fn from(value: LeadingColon) -> Self {
-        matches!(value, LeadingColon::Yes).then_some(<Token![::]>::default())
-    }
-}
+use self::key::{LeadingColon, UseKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Category {
@@ -56,19 +38,19 @@ impl From<&Ident> for Category {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(super) struct UseKey {
-    pub(super) vis: Visibility,
-    pub(super) leading_colon: LeadingColon,
-    pub(super) ident: Ident,
-}
-
 #[derive(Debug, Clone, Default)]
 pub(super) struct UseMap(HashMap<Category, HashMap<UseKey, Vec<ItemUse>>>);
 
 impl UseMap {
-    pub(super) fn take(&mut self, category: Category) -> HashMap<UseKey, Vec<ItemUse>> {
-        self.0.remove(&category).unwrap_or_default()
+    pub(super) fn take(&mut self, category: Category) -> Vec<(UseKey, Vec<ItemUse>)> {
+        let mut items = self
+            .0
+            .remove(&category)
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Vec<_>>();
+        items.sort_by(|(key, _), (other_key, _)| key.cmp(other_key));
+        items
     }
 }
 

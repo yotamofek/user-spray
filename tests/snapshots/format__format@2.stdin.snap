@@ -1,0 +1,17 @@
+---
+source: tests/format.rs
+expression: output
+input_file: tests/inputs/2.stdin
+snapshot_kind: text
+---
+mod outer {
+    pub mod inner {
+        //! inner use items are currently unsupported
+        use crate::Hello;
+        use crate::World;
+        use std::io::Write;
+    }
+}
+
+struct Hello;
+struct World;
