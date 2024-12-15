@@ -35,35 +35,40 @@ use std::io::Write;
 use mycrate::Foo;
 use std::collections::{HashMap, HashSet};
 use self::mymod::Bar;
-use std::io::{self, Read};
+pub use std::io::{self, Read};
+pub(super) use self::mymod::HelloWorld;
 ```
 
 After (with `--skip-rustfmt`):
 ```rust
-use std::{io::{Write, self, Read}, collections::{HashMap, HashSet}};
+use std::{io::{Write}, collections::{HashMap, HashSet}};
+pub use std::{io::{self, Read}};
 
 use mycrate::{Foo};
 
 use self::{mymod::{Bar}};
+pub(super) use self::{mymod::{HelloWorld}};
 ```
 
 After `rustfmt`:
 ```rust
+pub use std::io::{self, Read};
 use std::{
     collections::{HashMap, HashSet},
-    io::{self, Read, Write},
+    io::Write,
 };
 
 use mycrate::Foo;
 
 use self::mymod::Bar;
+pub(super) use self::mymod::HelloWorld;
 ```
 
 ## Todo
 
 - [ ] Globs
 - [ ] Renames
-- [ ] Restricted visibility (e.g. `pub(crate) use self::mymod::Bar`)
+- [X] Restricted visibility (e.g. `pub(crate) use self::mymod::Bar`)
 - [ ] `use` items inside other items (such as `mod`, `fn`s, etc.)
 - [ ] Handle doc comments on `use` items
 - [ ] Tests!

@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
 use fn_formats::DisplayFmt;
-use syn::{token::PathSep, ItemUse, UseGroup, UseName, UsePath, UseTree, Visibility};
+use syn::{ItemUse, Path, Token, UseGroup, UseName, UsePath, UseTree, VisRestricted, Visibility};
 
 pub(super) trait AsDisplay {
     fn as_display(&self) -> impl fmt::Display;
@@ -50,9 +50,45 @@ impl AsDisplay for UseTree {
     }
 }
 
-impl AsDisplay for Option<PathSep> {
+impl AsDisplay for Option<Token![::]> {
     fn as_display(&self) -> impl fmt::Display {
         self.map(|_| "::").unwrap_or_default()
+    }
+}
+
+impl AsDisplay for Option<Token![in]> {
+    fn as_display(&self) -> impl fmt::Display {
+        self.map(|_| "in ").unwrap_or_default()
+    }
+}
+
+impl AsDisplay for Path {
+    fn as_display(&self) -> impl fmt::Display {
+        DisplayFmt(|f| {
+            write!(f, "{}", self.leading_colon.as_display())?;
+            let mut segments = self.segments.iter().peekable();
+            while let Some(segment) = segments.next() {
+                assert!(segment.arguments.is_none());
+                write!(f, "{}", segment.ident)?;
+                if segments.peek().is_some() {
+                    write!(f, "::")?;
+                }
+            }
+            Ok(())
+        })
+    }
+}
+
+impl AsDisplay for VisRestricted {
+    fn as_display(&self) -> impl fmt::Display {
+        DisplayFmt(|f| {
+            write!(
+                f,
+                "pub({}{})",
+                self.in_token.as_display(),
+                self.path.as_display()
+            )
+        })
     }
 }
 
@@ -60,7 +96,7 @@ impl AsDisplay for Visibility {
     fn as_display(&self) -> impl fmt::Display {
         DisplayFmt(move |f| match self {
             Self::Public(_) => write!(f, "pub "),
-            Self::Restricted(vis_restricted) => todo!(),
+            Self::Restricted(vis_restricted) => write!(f, "{} ", vis_restricted.as_display()),
             Self::Inherited => Ok(()),
         })
     }
