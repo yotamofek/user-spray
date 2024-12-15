@@ -1,0 +1,11 @@
+[package]
+name = "user-spray"
+description = "Group \"use\" imports, while the feature is still unstable on rustfmt."
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["derive"] }
+fn-formats = "0.0.5"
+proc-macro2 = { version = "1.0.92", features = ["span-locations"] }
+syn = { version = "2.0.90", features = ["extra-traits", "full"] }
