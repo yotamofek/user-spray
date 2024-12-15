@@ -2,7 +2,7 @@ mod output;
 
 use std::{
     error::Error,
-    io::{stdin, Read},
+    io::{stdin, Read as _},
 };
 
 use clap::Parser;

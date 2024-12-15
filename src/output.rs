@@ -5,6 +5,8 @@ use std::{
     process::{self, Command, Stdio},
 };
 
+use fn_formats::DisplayFmt;
+
 use crate::Args;
 
 pub(super) enum Output {
@@ -21,7 +23,18 @@ impl Drop for Output {
             // Safety: stdin will never be accessed again
             unsafe { ManuallyDrop::drop(stdin) };
 
-            process.wait().expect("Rustfmt exited unsuccessfully");
+            let status = process.wait().expect("Could not wait for rustfmt to exit");
+            if !status.success() {
+                panic!(
+                    "Rustfmt exited unsuccessfully{}",
+                    DisplayFmt(|f| {
+                        if let Some(code) = status.code() {
+                            write!(f, " (code: {code})")?;
+                        }
+                        Ok(())
+                    })
+                );
+            }
         }
     }
 }
