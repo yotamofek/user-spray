@@ -20,7 +20,10 @@ And then add the following configuration to your VSCode's `settings.json`:
 ```json
 {
     "rust-analyzer.rustfmt.overrideCommand": [
-        "user-spray"
+        "user-spray",
+        "--",
+        // r-a passes this flag to rustfmt automatically, but since we override the command we need to add it manually
+        "--edition=2021"
     ]
 }
 ```
