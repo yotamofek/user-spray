@@ -1,7 +1,9 @@
 use std::fmt::{self, Display};
 
 use fn_formats::DisplayFmt;
-use syn::{ItemUse, Path, Token, UseGroup, UseName, UsePath, UseTree, VisRestricted, Visibility};
+use syn::{
+    Ident, ItemUse, Path, Token, UseGroup, UseName, UsePath, UseTree, VisRestricted, Visibility,
+};
 
 pub(super) trait AsDisplay {
     fn as_display(&self) -> impl fmt::Display;
@@ -23,18 +25,31 @@ fn braced<'t, T: Display + 't>(t: T) -> impl Display + 't {
     DisplayFmt(move |f| write!(f, "{{{t}}}"))
 }
 
+fn punctuated<'a, I: IntoIterator<Item = &'a T>, T: AsDisplay + 'a>(
+    items: impl Fn() -> I + 'a,
+    sep: &'a str,
+) -> impl Display + 'a {
+    DisplayFmt(move |f| {
+        let mut items = items().into_iter().peekable();
+        while let Some(item) = items.next() {
+            write!(f, "{}", item.as_display())?;
+            if items.peek().is_some() {
+                f.write_str(sep)?;
+            }
+        }
+        Ok(())
+    })
+}
+
 impl AsDisplay for UseGroup {
     fn as_display(&self) -> impl fmt::Display {
-        braced(DisplayFmt(|f| {
-            let mut items = self.items.iter().map(AsDisplay::as_display).peekable();
-            while let Some(item) = items.next() {
-                write!(f, "{item}")?;
-                if items.peek().is_some() {
-                    f.write_str(", ")?;
-                }
-            }
-            Ok(())
-        }))
+        braced(punctuated(|| self.items.iter(), ", "))
+    }
+}
+
+impl AsDisplay for Ident {
+    fn as_display(&self) -> impl fmt::Display {
+        self
     }
 }
 
@@ -65,16 +80,12 @@ impl AsDisplay for Option<Token![in]> {
 impl AsDisplay for Path {
     fn as_display(&self) -> impl fmt::Display {
         DisplayFmt(|f| {
-            write!(f, "{}", self.leading_colon.as_display())?;
-            let mut segments = self.segments.iter().peekable();
-            while let Some(segment) = segments.next() {
-                assert!(segment.arguments.is_none());
-                write!(f, "{}", segment.ident)?;
-                if segments.peek().is_some() {
-                    write!(f, "::")?;
-                }
-            }
-            Ok(())
+            write!(
+                f,
+                "{}{}",
+                self.leading_colon.as_display(),
+                punctuated(|| self.segments.iter().map(|segment| &segment.ident), "::")
+            )
         })
     }
 }
