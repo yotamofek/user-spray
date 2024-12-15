@@ -19,7 +19,9 @@ cargo install --git https://github.com/yotamofek/user-spray
 And then add the following configuration to your VSCode's `settings.json`:
 ```json
 {
-    "rust-analyzer.rustfmt.overrideCommand": null
+    "rust-analyzer.rustfmt.overrideCommand": [
+        "user-spray"
+    ]
 }
 ```
 
