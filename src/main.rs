@@ -15,6 +15,9 @@ use self::output::Output;
 struct Args {
     #[arg(long, help = "Don't pass results through rustfmt")]
     skip_rustfmt: bool,
+
+    #[arg(last = true)]
+    rustfmt_args: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -23,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut file = String::new();
     stdin().read_to_string(&mut file)?;
 
-    let output = Output::new(args.skip_rustfmt)?;
+    let output = Output::new(args)?;
 
     format(&file, output)
 }

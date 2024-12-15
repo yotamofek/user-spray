@@ -5,6 +5,8 @@ use std::{
     process::{self, Command, Stdio},
 };
 
+use crate::Args;
+
 pub(super) enum Output {
     Stdout(StdoutLock<'static>),
     Rustfmt {
@@ -25,11 +27,19 @@ impl Drop for Output {
 }
 
 impl Output {
-    pub(super) fn new(skip_rustfmt: bool) -> io::Result<Self> {
+    pub(super) fn new(
+        Args {
+            skip_rustfmt,
+            rustfmt_args,
+        }: Args,
+    ) -> io::Result<Self> {
         Ok(if skip_rustfmt {
             Self::Stdout(stdout().lock())
         } else {
-            let mut rustfmt = Command::new("rustfmt").stdin(Stdio::piped()).spawn()?;
+            let mut rustfmt = Command::new("rustfmt")
+                .args(rustfmt_args)
+                .stdin(Stdio::piped())
+                .spawn()?;
             let stdin = rustfmt.stdin.take().unwrap();
             Self::Rustfmt {
                 process: rustfmt,
