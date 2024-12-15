@@ -24,11 +24,18 @@ impl From<LeadingColon> for Option<Token![::]> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Name {
+    Ident(Ident),
+    Glob,
+    Rename { ident: Ident, rename: Ident },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UseKey {
     pub(crate) vis: Visibility,
     pub(crate) leading_colon: LeadingColon,
-    pub(crate) ident: Ident,
+    pub(crate) name: Name,
 }
 
 impl Ord for UseKey {
@@ -78,7 +85,7 @@ impl Ord for UseKey {
 
         cmp!(self.leading_colon, &other.leading_colon);
 
-        self.ident.cmp(&other.ident)
+        self.name.cmp(&other.name)
     }
 }
 

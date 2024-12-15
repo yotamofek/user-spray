@@ -1,0 +1,7 @@
+//! test renames
+
+use std::io::Write as _;
+use std::io::Read as _;
+use std::io::{Read as R, Write as W};
+use mycrate::Foo as _;
+use mycrate as myothercrate;

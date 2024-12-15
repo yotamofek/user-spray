@@ -1,0 +1,12 @@
+---
+source: tests/format.rs
+expression: output
+input_file: tests/inputs/3.stdin
+snapshot_kind: text
+---
+//! test renames
+
+use std::{io::{Write as _, Read as _, Read as R, Write as W}};
+
+use mycrate::{Foo as _};
+use mycrate as myothercrate;

@@ -69,8 +69,8 @@ pub(super) use self::mymod::HelloWorld;
 
 ## Todo
 
-- [ ] Globs
-- [ ] Renames
+- [X] Globs
+- [X] Renames
 - [X] Restricted visibility (e.g. `pub(crate) use self::mymod::Bar`)
 - [ ] `use` items inside other items (such as `mod`, `fn`s, etc.)
 - [ ] Handle doc comments on `use` items

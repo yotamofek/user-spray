@@ -2,7 +2,8 @@ use std::fmt::{self, Display};
 
 use fn_formats::DisplayFmt;
 use syn::{
-    Ident, ItemUse, Path, Token, UseGroup, UseName, UsePath, UseTree, VisRestricted, Visibility,
+    Ident, ItemUse, Path, Token, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree,
+    VisRestricted, Visibility,
 };
 
 pub(super) trait AsDisplay {
@@ -18,6 +19,18 @@ impl AsDisplay for UsePath {
 impl AsDisplay for UseName {
     fn as_display(&self) -> impl fmt::Display {
         DisplayFmt(|f| write!(f, "{}", self.ident))
+    }
+}
+
+impl AsDisplay for UseRename {
+    fn as_display(&self) -> impl fmt::Display {
+        DisplayFmt(|f| write!(f, "{} as {}", self.ident, self.rename))
+    }
+}
+
+impl AsDisplay for UseGlob {
+    fn as_display(&self) -> impl fmt::Display {
+        "*"
     }
 }
 
@@ -58,8 +71,8 @@ impl AsDisplay for UseTree {
         DisplayFmt(move |f| match self {
             UseTree::Path(use_path) => write!(f, "{}", use_path.as_display()),
             UseTree::Name(use_name) => write!(f, "{}", use_name.as_display()),
-            UseTree::Rename(use_rename) => todo!(),
-            UseTree::Glob(use_glob) => todo!(),
+            UseTree::Rename(use_rename) => write!(f, "{}", use_rename.as_display()),
+            UseTree::Glob(use_glob) => write!(f, "{}", use_glob.as_display()),
             UseTree::Group(use_group) => write!(f, "{}", use_group.as_display()),
         })
     }

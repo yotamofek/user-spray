@@ -3,9 +3,9 @@ mod key;
 use std::collections::HashMap;
 
 use proc_macro2::Span;
-use syn::{Ident, ItemUse, Token, UseName, UsePath};
+use syn::{Ident, ItemUse, Token, UseName, UsePath, UseRename};
 
-use self::key::{LeadingColon, UseKey};
+pub(crate) use self::key::{LeadingColon, Name, UseKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Category {
@@ -14,8 +14,8 @@ pub(super) enum Category {
     Crate,
 }
 
-impl From<&Ident> for Category {
-    fn from(value: &Ident) -> Self {
+impl From<&Name> for Category {
+    fn from(value: &Name) -> Self {
         macro_rules! i {
             ($ident:ident) => {
                 Ident::new(stringify!($ident), Span::call_site())
@@ -28,9 +28,15 @@ impl From<&Ident> for Category {
             };
         }
 
-        if [i!(std), i!(core), i!(alloc)].contains(value) {
+        let ident = match value {
+            Name::Ident(ident) => ident,
+            Name::Glob => return Self::External,
+            Name::Rename { ident: from, .. } => from,
+        };
+
+        if [i!(std), i!(core), i!(alloc)].contains(ident) {
             Self::Std
-        } else if [ti![self], ti![super], ti![crate]].contains(value) {
+        } else if [ti![self], ti![super], ti![crate]].contains(ident) {
             Self::Crate
         } else {
             Self::External
@@ -63,17 +69,19 @@ impl Extend<ItemUse> for UseMap {
             let key = UseKey {
                 vis: item.vis.clone(),
                 leading_colon: LeadingColon::from(item.leading_colon),
-                ident: match &item.tree {
-                    syn::UseTree::Path(UsePath { ident, .. }) => ident,
-                    syn::UseTree::Name(UseName { ident }) => ident,
-                    syn::UseTree::Rename(use_rename) => todo!(),
-                    syn::UseTree::Glob(use_glob) => todo!(),
-                    syn::UseTree::Group(use_group) => unreachable!(),
-                }
-                .clone(),
+                name: match &item.tree {
+                    syn::UseTree::Path(UsePath { ident, .. }) => Name::Ident(ident.clone()),
+                    syn::UseTree::Name(UseName { ident }) => Name::Ident(ident.clone()),
+                    syn::UseTree::Rename(UseRename { ident, rename, .. }) => Name::Rename {
+                        ident: ident.clone(),
+                        rename: rename.clone(),
+                    },
+                    syn::UseTree::Glob(_) => Name::Glob,
+                    syn::UseTree::Group(_) => todo!(),
+                },
             };
 
-            let category = Category::from(&key.ident);
+            let category = Category::from(&key.name);
 
             self.0
                 .entry(category)

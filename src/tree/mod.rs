@@ -1,28 +1,41 @@
 mod walk;
 
-use syn::{
-    token::{Brace, PathSep},
-    Ident, UseGroup, UseName, UsePath, UseTree,
-};
+use syn::{token::Brace, Ident, Token, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree};
 
 use self::walk::walk_use_tree;
+use crate::map::Name;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Node {
-    ident: Ident,
-    children: Vec<Node>,
+pub(super) enum Node {
+    Ident { ident: Ident, children: Vec<Node> },
+    Glob,
+    Rename { ident: Ident, rename: Ident },
 }
 
 impl Node {
-    fn new(ident: Ident, children: impl IntoIterator<Item = Node>) -> Self {
-        Self {
+    fn ident(ident: Ident) -> Self {
+        Self::Ident {
             ident,
-            children: children.into_iter().collect(),
+            children: Vec::new(),
         }
     }
 
-    fn leaf(ident: Ident) -> Self {
-        Self::new(ident, [])
+    fn glob() -> Self {
+        Self::Glob
+    }
+
+    fn rename(ident: Ident, rename: Ident) -> Self {
+        Self::Rename { ident, rename }
+    }
+}
+
+impl From<Name> for Node {
+    fn from(value: Name) -> Self {
+        match value {
+            Name::Ident(ident) => Self::ident(ident),
+            Name::Glob => Self::glob(),
+            Name::Rename { ident, rename } => Self::rename(ident, rename),
+        }
     }
 }
 
@@ -41,41 +54,50 @@ impl walk::Visitor for Visitor {
         self.current_path.pop().unwrap();
     }
 
-    fn visit_name(&mut self, ident: Ident) {
+    fn visit_name(&mut self, name: Name) {
         let mut path_segments = self.current_path.iter();
         let mut node = match (&mut self.root_node, path_segments.next()) {
             // handle tree with just one leaf, e.g. `use std;`
             (None, None) => {
-                self.root_node = Some(Node::leaf(ident.clone()));
+                self.root_node = Some(Node::from(name));
                 return;
             }
             (Some(root), Some(first_segment)) => {
-                assert_eq!(
-                    root.ident, *first_segment,
+                assert!(
+                    matches!(root, Node::Ident { ident,.. } if *ident == *first_segment),
                     "trying to visit tree with different root node"
                 );
                 root
             }
-            (None, Some(first_segment)) => self.root_node.insert(Node::leaf(first_segment.clone())),
+            (None, Some(first_segment)) => {
+                self.root_node.insert(Node::ident(first_segment.clone()))
+            }
 
             (Some(_), None) => unreachable!(),
         };
 
         for path in path_segments {
-            node = if let Some((existing_node, _)) = node
-                .children
-                .iter()
-                .enumerate()
-                .find(|(_, node)| node.ident == *path)
-            {
-                &mut node.children[existing_node]
-            } else {
-                node.children.push(Node::leaf(path.clone()));
-                node.children.last_mut().unwrap()
-            }
+            node =
+                {
+                    let Node::Ident { children, .. } = node else {
+                        unreachable!()
+                    };
+                    if let Some((existing_node, _)) = children.iter().enumerate().find(
+                        |(_, node)| matches!(node, Node::Ident { ident, ..} if *ident == *path),
+                    ) {
+                        &mut children[existing_node]
+                    } else {
+                        children.push(Node::ident(path.clone()));
+                        children.last_mut().unwrap()
+                    }
+                };
         }
 
-        node.children.push(Node::leaf(ident.clone()));
+        let Node::Ident { children, .. } = node else {
+            unreachable!();
+        };
+
+        children.push(Node::from(name));
     }
 }
 
@@ -96,18 +118,30 @@ impl From<UseTree> for Node {
 }
 
 impl From<Node> for UseTree {
-    fn from(Node { ident, children }: Node) -> Self {
-        if children.is_empty() {
-            Self::Name(UseName { ident })
-        } else {
-            Self::Path(UsePath {
+    fn from(node: Node) -> Self {
+        match node {
+            Node::Ident { ident, children } => {
+                if children.is_empty() {
+                    Self::Name(UseName { ident })
+                } else {
+                    Self::Path(UsePath {
+                        ident,
+                        colon2_token: <Token![::]>::default(),
+                        tree: Box::new(UseTree::Group(UseGroup {
+                            brace_token: Brace::default(),
+                            items: children.into_iter().map(UseTree::from).collect(),
+                        })),
+                    })
+                }
+            }
+            Node::Glob => Self::Glob(UseGlob {
+                star_token: <Token![*]>::default(),
+            }),
+            Node::Rename { ident, rename } => Self::Rename(UseRename {
                 ident,
-                colon2_token: PathSep::default(),
-                tree: Box::new(UseTree::Group(UseGroup {
-                    brace_token: Brace::default(),
-                    items: children.into_iter().map(UseTree::from).collect(),
-                })),
-            })
+                as_token: <Token![as]>::default(),
+                rename,
+            }),
         }
     }
 }
@@ -134,10 +168,13 @@ mod tests {
 
     macro_rules! n {
         ($name:path) => {
-            Node::leaf(ident(stringify!($name)))
+            Node::ident(ident(stringify!($name)))
         };
         ($name:path, [$($node:expr),+]) => {
-            Node::new(ident(stringify!($name)), [$($node),+])
+            Node::Ident {
+                ident: ident(stringify!($name)),
+                children: vec![$($node),+],
+            }
         };
     }
 
