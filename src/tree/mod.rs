@@ -1,15 +1,40 @@
 mod walk;
 
+use std::fmt::{self, Debug};
+
+use fn_formats::DebugFmt;
 use syn::{token::Brace, Ident, Token, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree};
 
 use self::walk::walk_use_tree;
-use crate::map::Name;
+use crate::{display::DebugAdapter, map::Name};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(super) enum Node {
     Ident { ident: Ident, children: Vec<Node> },
     Glob,
     Rename { ident: Ident, rename: Ident },
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ident { ident, children } => {
+                let mut tuple = f.debug_tuple("Ident");
+                tuple.field(&DebugAdapter(ident));
+                if !children.is_empty() {
+                    tuple.field(children);
+                    tuple.finish()
+                } else {
+                    tuple.finish_non_exhaustive()
+                }
+            }
+            Self::Glob => write!(f, "Glob"),
+            Self::Rename { ident, rename } => f
+                .debug_tuple("Rename")
+                .field(&DebugFmt(|f| write!(f, "{ident} as {rename}")))
+                .finish(),
+        }
+    }
 }
 
 impl Node {
@@ -45,6 +70,22 @@ struct Visitor {
     root_node: Option<Node>,
 }
 
+impl Debug for Visitor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Visitor")
+            .field(
+                "current_path",
+                &DebugFmt(|f| {
+                    f.debug_list()
+                        .entries(self.current_path.iter().map(DebugAdapter))
+                        .finish()
+                }),
+            )
+            .field("root_node", &self.root_node)
+            .finish()
+    }
+}
+
 impl walk::Visitor for Visitor {
     fn enter_path(&mut self, ident: Ident) {
         self.current_path.push(ident);
@@ -77,20 +118,20 @@ impl walk::Visitor for Visitor {
         };
 
         for path in path_segments {
-            node =
-                {
-                    let Node::Ident { children, .. } = node else {
-                        unreachable!()
-                    };
-                    if let Some((existing_node, _)) = children.iter().enumerate().find(
-                        |(_, node)| matches!(node, Node::Ident { ident, ..} if *ident == *path),
-                    ) {
-                        &mut children[existing_node]
-                    } else {
-                        children.push(Node::ident(path.clone()));
-                        children.last_mut().unwrap()
-                    }
-                };
+            let Node::Ident { children, .. } = node else {
+                unreachable!()
+            };
+
+            node = if let Some((existing_node, _)) = children
+                .iter()
+                .enumerate()
+                .find(|(_, node)| matches!(node, Node::Ident { ident, ..} if *ident == *path))
+            {
+                &mut children[existing_node]
+            } else {
+                children.push(Node::ident(path.clone()));
+                children.last_mut().unwrap()
+            };
         }
 
         let Node::Ident { children, .. } = node else {

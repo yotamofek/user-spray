@@ -1,4 +1,4 @@
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 
 use fn_formats::DisplayFmt;
 use syn::{
@@ -137,5 +137,13 @@ impl AsDisplay for ItemUse {
                 self.tree.as_display()
             )
         })
+    }
+}
+
+pub(crate) struct DebugAdapter<'a, T: Display>(pub(crate) &'a T);
+
+impl<T: Display> Debug for DebugAdapter<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

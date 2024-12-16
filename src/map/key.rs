@@ -1,6 +1,12 @@
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    fmt::{self, Debug},
+};
 
+use fn_formats::DebugFmt;
 use syn::{Ident, Token, Visibility};
+
+use crate::display::DebugAdapter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum LeadingColon {
@@ -24,11 +30,24 @@ impl From<LeadingColon> for Option<Token![::]> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum Name {
     Ident(Ident),
     Glob,
     Rename { ident: Ident, rename: Ident },
+}
+
+impl Debug for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ident(ident) => f.debug_tuple("Ident").field(&DebugAdapter(ident)).finish(),
+            Self::Glob => write!(f, "Glob"),
+            Self::Rename { ident, rename } => f
+                .debug_tuple("Rename")
+                .field(&DebugFmt(|f| write!(f, "{ident} as {rename}")))
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
