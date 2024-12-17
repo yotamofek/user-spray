@@ -2,7 +2,7 @@ mod walk;
 
 use std::{
     borrow::Borrow,
-    cell::{Cell, Ref, RefCell},
+    cell::{Cell, Ref, RefCell, RefMut},
     fmt::{self, Debug},
     io::{stderr, Write},
     mem::take,
@@ -39,43 +39,29 @@ impl Debug for Node {
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum GroupOrNode {
-    Group(Rc<RefCell<Group>>),
-    Node(Rc<RefCell<Node>>),
+    Group(Group),
+    Node(Node),
 }
 
 impl Debug for GroupOrNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Group(group) => RefCell::borrow(group).fmt(f),
-            Self::Node(node) => RefCell::borrow(node).fmt(f),
+            Self::Group(group) => group.fmt(f),
+            Self::Node(node) => node.fmt(f),
         }
-    }
-}
-
-impl From<Group> for GroupOrNode {
-    fn from(group: Group) -> Self {
-        Self::Group(Rc::new(RefCell::new(group)))
-    }
-}
-
-impl From<Node> for GroupOrNode {
-    fn from(node: Node) -> Self {
-        Self::Node(Rc::new(RefCell::new(node)))
     }
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(super) struct Group {
-    children: Vec<Rc<RefCell<Node>>>,
+    children: Rc<RefCell<Vec<Node>>>,
 }
 
 impl Debug for Group {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Group")
             .field(&DebugFmt(|f| {
-                f.debug_list()
-                    .entries(self.children.iter().map(|child| RefCell::borrow(child)))
-                    .finish()
+                f.debug_list().entries(self.children().iter()).finish()
             }))
             .finish()
     }
@@ -89,7 +75,7 @@ pub(super) struct Tree {
 impl Default for Tree {
     fn default() -> Self {
         Self {
-            root: GroupOrNode::Group(Rc::new(RefCell::new(Group::default()))),
+            root: GroupOrNode::Group(Group::default()),
         }
     }
 }
@@ -125,15 +111,27 @@ impl Debug for Visitor {
 impl Group {
     fn new_with_self() -> Self {
         Self {
-            children: vec![Rc::new(RefCell::new(Node::self_leaf()))],
+            children: Rc::new(RefCell::new(vec![Node::self_leaf()])),
         }
     }
 
-    fn find_child_by_ident(&self, ident: &Ident) -> Option<Rc<RefCell<Node>>> {
-        self.children
+    fn find_child_by_ident(&self, ident: &Ident) -> Option<Node> {
+        self.children()
             .iter()
-            .find(|child| RefCell::borrow(child).parent_ident() == Some(ident))
+            .find(|child| child.parent_ident() == Some(ident))
             .cloned()
+    }
+
+    fn children(&self) -> Ref<Vec<Node>> {
+        RefCell::borrow(&self.children)
+    }
+
+    fn children_mut(&self) -> RefMut<Vec<Node>> {
+        self.children.borrow_mut()
+    }
+
+    fn push_child(&self, child: Node) {
+        self.children_mut().push(child)
     }
 }
 
@@ -171,89 +169,70 @@ impl walk::Visitor for Visitor {
     fn visit_name(&mut self, name: Name) {
         let mut cur = self.tree.root.clone();
         for segment in &self.current_path {
-            match cur {
+            cur = match cur {
                 GroupOrNode::Group(group) => {
-                    let existing_child = {
-                        let group = RefCell::borrow(&group);
-                        group.find_child_by_ident(segment)
-                    };
-                    if let Some(child) = existing_child {
-                        cur = GroupOrNode::Node(child);
-                    } else {
-                        let child = Rc::new(RefCell::new(Node::Parent {
+                    GroupOrNode::Node(group.find_child_by_ident(segment).unwrap_or_else(|| {
+                        let child = Node::Parent {
                             ident: segment.clone(),
-                            child: Rc::new(RefCell::new(GroupOrNode::Group(Rc::new(
-                                RefCell::new(Group::default()),
-                            )))),
-                        }));
-                        group.borrow_mut().children.push(child.clone());
-                        cur = GroupOrNode::Node(child);
+                            child: Rc::new(RefCell::new(GroupOrNode::Group(Group::default()))),
+                        };
+                        group.push_child(child.clone());
+                        child
+                    }))
+                }
+                GroupOrNode::Node(ref mut node) if node.leaf_ident() == Some(segment) => {
+                    let child = Rc::new(RefCell::new(GroupOrNode::Group(Group::new_with_self())));
+                    *node = Node::Parent {
+                        ident: segment.clone(),
+                        child,
+                    };
+                    GroupOrNode::Node(node.clone())
+                }
+                GroupOrNode::Node(Node::Parent { ident, child }) => {
+                    match &*RefCell::borrow(&child) {
+                        GroupOrNode::Group(group) => GroupOrNode::Node(
+                            group.find_child_by_ident(segment).unwrap_or_else(|| {
+                                let child = Node::Parent {
+                                    ident: segment.clone(),
+                                    child: Rc::new(RefCell::new(GroupOrNode::Group(
+                                        Group::default(),
+                                    ))),
+                                };
+                                group.push_child(child.clone());
+                                child
+                            }),
+                        ),
+                        _ => {
+                            todo!();
+                        }
                     }
                 }
                 GroupOrNode::Node(node) => {
-                    if RefCell::borrow(&node).leaf_ident() == Some(segment) {
-                        let child =
-                            Rc::new(RefCell::new(GroupOrNode::from(Group::new_with_self())));
-                        *node.borrow_mut() = Node::Parent {
-                            ident: segment.clone(),
-                            child,
-                        };
-                        cur = GroupOrNode::Node(node);
-                    } else if let Node::Parent { ident, child } = &*RefCell::borrow(&node) {
-                        if let GroupOrNode::Group(group) = &*RefCell::borrow(child) {
-                            if let Some(existing_child) = {
-                                let group = RefCell::borrow(group);
-                                group.find_child_by_ident(segment)
-                            } {
-                                cur = GroupOrNode::Node(existing_child);
-                            } else {
-                                let child = Rc::new(RefCell::new(Node::Parent {
-                                    ident: segment.clone(),
-                                    child: Rc::new(RefCell::new(GroupOrNode::Group(Rc::new(
-                                        RefCell::new(Group::default()),
-                                    )))),
-                                }));
-                                RefCell::borrow_mut(group).children.push(child.clone());
-                                cur = GroupOrNode::Node(child);
-                            }
-                        } else {
-                            todo!();
-                        }
-                    } else {
-                        todo!();
-                    }
+                    todo!();
                 }
             }
         }
 
         match dbg!(cur) {
             GroupOrNode::Group(group) => todo!(),
-            GroupOrNode::Node(node) => match &*RefCell::borrow(&node) {
-                Node::Parent { child, .. } => match &*RefCell::borrow(child) {
+            GroupOrNode::Node(node) => match node {
+                Node::Parent { child, .. } => match &*RefCell::borrow(&child) {
                     GroupOrNode::Group(group) => {
                         if let Some(existing_group) = name.as_ident().and_then(|ident| {
-                            let group = RefCell::borrow(group);
-                            group
-                                .children
-                                .iter()
-                                .find_map(|child| match &*RefCell::borrow(child) {
-                                    Node::Parent {
-                                        ident: parent_ident,
-                                        child,
-                                    } if parent_ident == ident => match &*RefCell::borrow(child) {
-                                        GroupOrNode::Group(group) => Some(group.clone()),
-                                        _ => None,
-                                    },
+                            group.children().iter().find_map(|child| match child {
+                                Node::Parent {
+                                    ident: parent_ident,
+                                    child,
+                                } if parent_ident == ident => match &*RefCell::borrow(child) {
+                                    GroupOrNode::Group(group) => Some(group.clone()),
                                     _ => None,
-                                })
+                                },
+                                _ => None,
+                            })
                         }) {
-                            RefCell::borrow_mut(&existing_group)
-                                .children
-                                .push(Rc::new(RefCell::new(Node::self_leaf())))
+                            existing_group.push_child(Node::self_leaf())
                         } else {
-                            RefCell::borrow_mut(group)
-                                .children
-                                .push(Rc::new(RefCell::new(Node::Leaf(name))));
+                            group.push_child(Node::Leaf(name));
                         }
                     }
                     GroupOrNode::Node(node) => todo!(),
@@ -342,19 +321,12 @@ mod tests {
 
     #[test]
     fn kaki() {
-        let mut tree = parse_node!(std::a::b);
-        tree.extend([
+        let tree = Tree::from_iter([
             parse_quote! {
                 std::a::c
             },
             parse_quote! {
                 std::a
-            },
-            parse_quote! {
-                std::a::d
-            },
-            parse_quote! {
-                std::a::c::A
             },
         ]);
         dbg!(tree);
