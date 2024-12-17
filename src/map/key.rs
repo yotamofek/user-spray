@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Write},
 };
 
 use fn_formats::DebugFmt;
@@ -37,15 +37,26 @@ pub(crate) enum Name {
     Rename { ident: Ident, rename: Ident },
 }
 
+impl Name {
+    pub(crate) fn self_() -> Self {
+        Self::Ident(<Token![self]>::default().into())
+    }
+
+    pub(crate) fn as_ident(&self) -> Option<&Ident> {
+        if let Self::Ident(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 impl Debug for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ident(ident) => f.debug_tuple("Ident").field(&DebugAdapter(ident)).finish(),
-            Self::Glob => write!(f, "Glob"),
-            Self::Rename { ident, rename } => f
-                .debug_tuple("Rename")
-                .field(&DebugFmt(|f| write!(f, "{ident} as {rename}")))
-                .finish(),
+            Self::Ident(ident) => write!(f, "{ident}"),
+            Self::Glob => f.write_char('*'),
+            Self::Rename { ident, rename } => write!(f, "{ident} as {rename}"),
         }
     }
 }

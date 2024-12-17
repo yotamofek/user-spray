@@ -9,7 +9,7 @@ use syn::{spanned::Spanned, Item, ItemUse, Token, UseTree};
 use self::{
     display::AsDisplay,
     map::{Category, UseMap},
-    tree::Node,
+    tree::{Node, Tree},
 };
 
 pub fn format(file: &str, mut output: impl Write) -> Result<(), Box<dyn Error>> {
@@ -53,7 +53,7 @@ pub fn format(file: &str, mut output: impl Write) -> Result<(), Box<dyn Error>> 
             .map(|category| use_map.take(category))
         {
             for (key, items) in category_map {
-                let tree = UseTree::from(Node::from_iter(
+                let tree = UseTree::from(Tree::from_iter(
                     items.into_iter().map(|ItemUse { tree, .. }| tree),
                 ));
                 let item = ItemUse {

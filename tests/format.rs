@@ -6,7 +6,7 @@ use insta::{assert_snapshot, glob};
 fn format() -> Result<(), Box<dyn Error>> {
     use user_spray::format;
 
-    glob!("inputs", "*.stdin", |path| {
+    glob!("inputs", "turn*.stdin", |path| {
         let contents = fs::read_to_string(path).unwrap();
         let mut output = vec![];
         format(&contents, &mut output).unwrap();

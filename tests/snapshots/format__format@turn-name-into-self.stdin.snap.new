@@ -1,0 +1,16 @@
+---
+source: tests/format.rs
+assertion_line: 14
+expression: output
+input_file: tests/inputs/turn-name-into-self.stdin
+snapshot_kind: text
+---
+use mycrate::{foo::{Bar, self}};
+
+
+
+
+struct Baz;
+
+
+use mycrate::{foo::{Bar}};

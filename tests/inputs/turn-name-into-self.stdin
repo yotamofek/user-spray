@@ -1,0 +1,7 @@
+use mycrate::foo::Bar;
+use mycrate::foo;
+
+struct Baz;
+
+use mycrate::foo;
+use mycrate::foo::Bar;
