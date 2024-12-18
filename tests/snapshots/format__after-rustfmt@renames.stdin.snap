@@ -1,0 +1,10 @@
+---
+source: tests/format.rs
+expression: output
+input_file: tests/inputs/renames.stdin
+snapshot_kind: text
+---
+use std::io::{Read as _, Read as R, Write as _, Write as W};
+
+use mycrate as myothercrate;
+use mycrate::Foo as _;

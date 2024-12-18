@@ -1,12 +1,12 @@
 ---
 source: tests/format.rs
 expression: output
-input_file: tests/inputs/2.stdin
+input_file: tests/inputs/inner-body-use.stdin
 snapshot_kind: text
 ---
 mod outer {
     pub mod inner {
-        //! inner use items are currently unsupported
+        // inner use items are currently unsupported
         use crate::Hello;
         use crate::World;
         use std::io::Write;

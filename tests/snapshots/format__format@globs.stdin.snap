@@ -1,0 +1,9 @@
+---
+source: tests/format.rs
+expression: output
+input_file: tests/inputs/globs.stdin
+snapshot_kind: text
+---
+use {std::{io::{*, Write as _}}};
+
+use {*};

@@ -3,10 +3,7 @@ use std::{
     fmt::{self, Debug, Write},
 };
 
-use fn_formats::DebugFmt;
 use syn::{Ident, Token, Visibility};
-
-use crate::display::DebugAdapter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum LeadingColon {

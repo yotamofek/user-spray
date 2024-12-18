@@ -1,0 +1,13 @@
+---
+source: tests/format.rs
+expression: output
+input_file: tests/inputs/simple.stdin
+snapshot_kind: text
+---
+use {std::{io::{Write}, collections::{HashMap, HashSet}}};
+pub use {std::{io::{self, Read}}};
+
+use {mycrate::{Foo}};
+
+use {self::{mymod::{Bar}}};
+pub(super) use {self::{mymod::{HelloWorld}}};

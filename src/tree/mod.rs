@@ -1,10 +1,8 @@
 mod walk;
 
 use std::{
-    borrow::Borrow,
-    cell::{Cell, Ref, RefCell, RefMut},
+    cell::{Ref, RefCell, RefMut},
     fmt::{self, Debug},
-    io::{stderr, Write},
     mem::take,
     rc::Rc,
 };
@@ -16,22 +14,30 @@ use self::walk::walk_use_tree;
 use crate::{display::DebugAdapter, map::Name};
 
 #[derive(Clone, PartialEq, Eq)]
+pub(super) struct Parent {
+    pub(super) ident: Ident,
+    pub(super) child: Rc<RefCell<GroupOrNode>>,
+}
+
+impl Debug for Parent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Parent")
+            .field("ident", &DebugAdapter(&self.ident))
+            .field("child", &RefCell::borrow(&self.child))
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(super) enum Node {
-    Parent {
-        ident: Ident,
-        child: Rc<RefCell<GroupOrNode>>,
-    },
+    Parent(Parent),
     Leaf(Name),
 }
 
 impl Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Parent { ident, child } => f
-                .debug_struct("Parent")
-                .field("ident", &DebugAdapter(ident))
-                .field("child", &RefCell::borrow(child))
-                .finish(),
+            Self::Parent(parent) => parent.fmt(f),
             Self::Leaf(name) => f.debug_tuple("Leaf").field(name).finish(),
         }
     }
@@ -142,10 +148,7 @@ impl Node {
 
     /// Returns the ident of the node if it is a parent node.
     fn parent_ident(&self) -> Option<&Ident> {
-        match self {
-            Node::Parent { ident, .. } => Some(ident),
-            _ => None,
-        }
+        self.as_parent().map(|Parent { ident, .. }| ident)
     }
 
     /// Returns the ident of the node if it is a leaf node with an ident for a name.
@@ -153,6 +156,68 @@ impl Node {
         match self {
             Node::Leaf(Name::Ident(ident)) => Some(ident),
             _ => None,
+        }
+    }
+
+    pub(super) fn as_parent(&self) -> Option<&Parent> {
+        if let Self::Parent(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn as_leaf(&self) -> Option<&Name> {
+        if let Self::Leaf(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+impl Visitor {
+    fn descend_path_segment(mut cur: GroupOrNode, segment: &Ident) -> GroupOrNode {
+        match cur {
+            GroupOrNode::Group(group) => {
+                GroupOrNode::Node(group.find_child_by_ident(segment).unwrap_or_else(|| {
+                    let child = Node::Parent(Parent {
+                        ident: segment.clone(),
+                        child: Rc::new(RefCell::new(GroupOrNode::Group(Group::default()))),
+                    });
+                    group.push_child(child.clone());
+                    child
+                }))
+            }
+            GroupOrNode::Node(ref mut node) if node.leaf_ident() == Some(segment) => {
+                todo!();
+                // let child = Rc::new(RefCell::new(GroupOrNode::Group(Group::new_with_self())));
+                // *node = Node::Parent(Parent {
+                //     ident: segment.clone(),
+                //     child,
+                // });
+                // GroupOrNode::Node(node.clone())
+            }
+            GroupOrNode::Node(Node::Parent(Parent { ident, child })) => {
+                match &*RefCell::borrow(&child) {
+                    GroupOrNode::Group(group) => {
+                        GroupOrNode::Node(group.find_child_by_ident(segment).unwrap_or_else(|| {
+                            let child = Node::Parent(Parent {
+                                ident: segment.clone(),
+                                child: Rc::new(RefCell::new(GroupOrNode::Group(Group::default()))),
+                            });
+                            group.push_child(child.clone());
+                            child
+                        }))
+                    }
+                    _ => {
+                        todo!();
+                    }
+                }
+            }
+            GroupOrNode::Node(node) => {
+                todo!();
+            }
         }
     }
 }
@@ -167,68 +232,31 @@ impl walk::Visitor for Visitor {
     }
 
     fn visit_name(&mut self, name: Name) {
-        let mut cur = self.tree.root.clone();
-        for segment in &self.current_path {
-            cur = match cur {
-                GroupOrNode::Group(group) => {
-                    GroupOrNode::Node(group.find_child_by_ident(segment).unwrap_or_else(|| {
-                        let child = Node::Parent {
-                            ident: segment.clone(),
-                            child: Rc::new(RefCell::new(GroupOrNode::Group(Group::default()))),
-                        };
-                        group.push_child(child.clone());
-                        child
-                    }))
-                }
-                GroupOrNode::Node(ref mut node) if node.leaf_ident() == Some(segment) => {
-                    let child = Rc::new(RefCell::new(GroupOrNode::Group(Group::new_with_self())));
-                    *node = Node::Parent {
-                        ident: segment.clone(),
-                        child,
-                    };
-                    GroupOrNode::Node(node.clone())
-                }
-                GroupOrNode::Node(Node::Parent { ident, child }) => {
-                    match &*RefCell::borrow(&child) {
-                        GroupOrNode::Group(group) => GroupOrNode::Node(
-                            group.find_child_by_ident(segment).unwrap_or_else(|| {
-                                let child = Node::Parent {
-                                    ident: segment.clone(),
-                                    child: Rc::new(RefCell::new(GroupOrNode::Group(
-                                        Group::default(),
-                                    ))),
-                                };
-                                group.push_child(child.clone());
-                                child
-                            }),
-                        ),
-                        _ => {
-                            todo!();
-                        }
-                    }
-                }
-                GroupOrNode::Node(node) => {
-                    todo!();
-                }
-            }
-        }
+        let cur = self
+            .current_path
+            .iter()
+            .fold(self.tree.root.clone(), |cur, segment| {
+                Self::descend_path_segment(cur, segment)
+            });
 
-        match dbg!(cur) {
-            GroupOrNode::Group(group) => todo!(),
+        match cur {
+            GroupOrNode::Group(group) => {
+                // TODO: check if child exists
+                group.children_mut().push(Node::Leaf(name));
+            }
             GroupOrNode::Node(node) => match node {
-                Node::Parent { child, .. } => match &*RefCell::borrow(&child) {
+                Node::Parent(Parent { child, .. }) => match &*RefCell::borrow(&child) {
                     GroupOrNode::Group(group) => {
                         if let Some(existing_group) = name.as_ident().and_then(|ident| {
-                            group.children().iter().find_map(|child| match child {
-                                Node::Parent {
-                                    ident: parent_ident,
-                                    child,
-                                } if parent_ident == ident => match &*RefCell::borrow(child) {
+                            group
+                                .children()
+                                .iter()
+                                .filter_map(Node::as_parent)
+                                .filter(|child| child.ident == *ident)
+                                .find_map(|Parent { child, .. }| match &*RefCell::borrow(child) {
                                     GroupOrNode::Group(group) => Some(group.clone()),
                                     _ => None,
-                                },
-                                _ => None,
-                            })
+                                })
                         }) {
                             existing_group.push_child(Node::self_leaf())
                         } else {
@@ -273,33 +301,56 @@ impl From<UseTree> for Tree {
     }
 }
 
-impl From<Tree> for UseTree {
-    fn from(tree: Tree) -> Self {
-        // match node {
-        //     Node::Ident { ident, children } => {
-        //         if children.is_empty() {
-        //             Self::Name(UseName { ident })
-        //         } else {
-        //             Self::Path(UsePath {
-        //                 ident,
-        //                 colon2_token: <Token![::]>::default(),
-        //                 tree: Box::new(UseTree::Group(UseGroup {
-        //                     brace_token: Brace::default(),
-        //                     items: children.into_iter().map(UseTree::from).collect(),
-        //                 })),
-        //             })
-        //         }
-        //     }
-        //     Node::Glob => Self::Glob(UseGlob {
-        //         star_token: <Token![*]>::default(),
-        //     }),
-        //     Node::Rename { ident, rename } => Self::Rename(UseRename {
-        //         ident,
-        //         as_token: <Token![as]>::default(),
-        //         rename,
-        //     }),
-        // }
-        todo!();
+impl From<&Parent> for UseTree {
+    fn from(Parent { ident, child }: &Parent) -> Self {
+        Self::Path(UsePath {
+            ident: ident.clone(),
+            colon2_token: <Token![::]>::default(),
+            tree: Box::new(Self::from(&*RefCell::borrow(child))),
+        })
+    }
+}
+
+impl From<&Node> for UseTree {
+    fn from(node: &Node) -> Self {
+        match node {
+            Node::Parent(parent) => parent.into(),
+            Node::Leaf(Name::Glob) => UseTree::Glob(UseGlob {
+                star_token: <Token![*]>::default(),
+            }),
+            Node::Leaf(Name::Ident(ident)) => UseTree::Name(UseName {
+                ident: ident.clone(),
+            }),
+            Node::Leaf(Name::Rename { ident, rename }) => UseTree::Rename(UseRename {
+                ident: ident.clone(),
+                as_token: <Token![as]>::default(),
+                rename: rename.clone(),
+            }),
+        }
+    }
+}
+
+impl From<&Group> for UseTree {
+    fn from(group: &Group) -> Self {
+        Self::Group(UseGroup {
+            brace_token: Brace::default(),
+            items: group.children().iter().map(UseTree::from).collect(),
+        })
+    }
+}
+
+impl From<&GroupOrNode> for UseTree {
+    fn from(group_or_node: &GroupOrNode) -> Self {
+        match group_or_node {
+            GroupOrNode::Group(group) => group.into(),
+            GroupOrNode::Node(node) => node.into(),
+        }
+    }
+}
+
+impl From<&Tree> for UseTree {
+    fn from(tree: &Tree) -> Self {
+        Self::from(&tree.root)
     }
 }
 
@@ -326,10 +377,10 @@ mod tests {
                 std::a::c
             },
             parse_quote! {
-                std::a
+                std
             },
         ]);
-        dbg!(tree);
+        dbg!(UseTree::from(&tree));
     }
 }
 
