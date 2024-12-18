@@ -198,7 +198,7 @@ impl Visitor {
                 // });
                 // GroupOrNode::Node(node.clone())
             }
-            GroupOrNode::Node(Node::Parent(Parent { ident, child })) => {
+            GroupOrNode::Node(Node::Parent(Parent { child, .. })) => {
                 match &*RefCell::borrow(&child) {
                     GroupOrNode::Group(group) => {
                         GroupOrNode::Node(group.find_child_by_ident(segment).unwrap_or_else(|| {
@@ -315,13 +315,13 @@ impl From<&Node> for UseTree {
     fn from(node: &Node) -> Self {
         match node {
             Node::Parent(parent) => parent.into(),
-            Node::Leaf(Name::Glob) => UseTree::Glob(UseGlob {
+            Node::Leaf(Name::Glob) => Self::Glob(UseGlob {
                 star_token: <Token![*]>::default(),
             }),
-            Node::Leaf(Name::Ident(ident)) => UseTree::Name(UseName {
+            Node::Leaf(Name::Ident(ident)) => Self::Name(UseName {
                 ident: ident.clone(),
             }),
-            Node::Leaf(Name::Rename { ident, rename }) => UseTree::Rename(UseRename {
+            Node::Leaf(Name::Rename { ident, rename }) => Self::Rename(UseRename {
                 ident: ident.clone(),
                 as_token: <Token![as]>::default(),
                 rename: rename.clone(),
@@ -334,7 +334,7 @@ impl From<&Group> for UseTree {
     fn from(group: &Group) -> Self {
         Self::Group(UseGroup {
             brace_token: Brace::default(),
-            items: group.children().iter().map(UseTree::from).collect(),
+            items: group.children().iter().map(Self::from).collect(),
         })
     }
 }
